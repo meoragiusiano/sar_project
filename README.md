@@ -1,124 +1,191 @@
-# Search and Rescue (SAR) Agent Framework - CSC 581
+# Terrain Analyst Agent
 
-## Introduction
+## Overview
+The Terrain Analyst Agent is a component of the Search and Rescue (SAR) operations system, designed to analyze terrain conditions, identify obstacles, and generate path recommendations for SAR missions. This agent integrates terrain analysis with real-time weather data to provide comprehensive environmental assessments for SAR operations.
 
-This framework is for CSC 581 students to develop intelligent agents supporting the AI4S&R project. Students can create specialized agents for various SAR roles such as those listed in this spreadsheet:
+NOTE: I have added a terrain_agent_demo.py script for an easy test of this agent
 
-https://docs.google.com/spreadsheets/d/1QZK5HAdDC-_XNui6S0JZTbJH5_PbYJTp8_gyhXmz8Ek/edit?usp=sharing
-https://docs.google.com/spreadsheets/d/11rBV9CbKNeQbWbaks8TF6GO7WcSUDS_-hAoH75UEkgQ/edit?usp=sharing
+## Key Features
 
-Each student or team will choose a specific role within the SAR ecosystem and implement an agent that provides decision support and automation for that role.
+### 1. Terrain Analysis
+- Comprehensive terrain type identification
+- Elevation analysis
+- Slope assessment
+- Vegetation density evaluation
+- Soil type classification
+- Weather condition integration
 
-## How to Submit
-Please submit a link to your clone of the repository to Canvas. 
+### 2. Obstacle Identification
+- Detection and classification of various obstacles:
+  - Steep slopes
+  - Water crossings
+  - Dense vegetation
+  - Flash flood areas
+  - Sandy terrain
+  - Boggy ground
+  - Low visibility areas
+  - Wind hazards
+- Severity assessment for each obstacle
+- Weather impact consideration on obstacles
 
-## Prerequisites
+### 3. Path Generation
+- Path planning between two points
+- Waypoint generation with time estimates
+- Difficulty assessment based on terrain and weather
+- Equipment recommendations
+- Weather delay calculations
+- Terrain challenge identification and mitigation strategies
 
-- Python 3.8 or higher
-- pyenv (recommended for Python version management)
-- pip (for dependency management)
+### 4. Terrain Mapping
+- GeoJSON format support
+- Integrated weather overlay
+- Obstacle visualization
+- Terrain-weather interaction mapping
 
-## Setup and Installation
+### 5. Real-time Monitoring
+- Continuous terrain condition monitoring
+- Detection of weather-induced changes
+- Assessment of terrain-weather interactions
+- Updates on crossing difficulties
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd sar-project
+## Usage
+
+### Basic Initialization
+```python
+from sar_project.agents.terrain_agent import TerrainAnalystAgent
+from sar_project.agents.weather_agent import WeatherAgent
+
+# Initialize with optional weather agent
+weather_agent = WeatherAgent()
+terrain_agent = TerrainAnalystAgent(weather_agent=weather_agent)
 ```
 
-2. Set up Python environment:
-```bash
-# Using pyenv (recommended)
-pyenv install 3.9.6  # or your preferred version
-pyenv local 3.9.6
-
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Unix/macOS
-# or
-.venv\Scripts\activate     # On Windows
+### Analyzing Terrain
+```python
+analysis = terrain_agent.analyze_terrain(
+    location="mountain_area_1",
+    resolution="medium",
+    include_weather=True
+)
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-pip install -e .
+### Identifying Obstacles
+```python
+obstacles = terrain_agent.identify_obstacles(
+    location="river_crossing_2",
+    include_weather=True
+)
 ```
 
-4. Configure environment variables:
-
-#### OpenAI:
-- Obtain required API keys:
-  1. OpenAI API key: Sign up at https://platform.openai.com/signup
-- Update your `.env` file with the following:
-    ```
-    OPENAI_API_KEY=your_openai_api_key_here
-    ```
-#### Google Gemini:
-- Obtain required API keys:
-  1. ``` pip install google-generativeai ```
-  2. ``` import google.generativeai as genai ```
-  3. Google Gemini API Key: Obtain at https://aistudio.google.com/apikey
-- Configure with the following:
-  ```
-  genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-  ```
-
-Make sure to keep your `.env` file private and never commit it to version control.
-
-## Project Structure
-
-```
-sar-project/
-├── src/
-│   └── sar_project/         # Main package directory
-│       └── agents/          # Agent implementations
-│       └── config/          # Configuration and settings
-│       └── knowledge/       # Knowledge base implementations
-├── tests/                   # Test directory
-├── pyproject.toml           # Project metadata and build configuration
-├── requirements.txt         # Project dependencies
-└── .env                     # Environment configuration
+### Generating Path
+```python
+path = terrain_agent.generate_path(
+    start="base_camp",
+    end="target_location",
+    difficulty="normal",
+    include_weather=True
+)
 ```
 
-## Development
+### Getting Terrain Map
+```python
+terrain_map = terrain_agent.get_terrain_map(
+    location="search_area_3",
+    format="geojson",
+    include_weather=True
+)
+```
 
-This project follows modern Python development practices:
+## Key Methods
 
-1. Source code is organized in the `src/sar_project` layout
-2. Use `pip install -e .` for development installation
-3. Run tests with `pytest tests/`
-4. Follow the existing code style and structure
-5. Make sure to update requirements.txt when adding dependencies
+### analyze_terrain()
+Performs comprehensive terrain analysis including:
+- Terrain type identification
+- Elevation analysis
+- Weather condition integration
+- Terrain-weather interaction assessment
 
+### identify_obstacles()
+Identifies and catalogs obstacles in a given location:
+- Categorizes obstacle types
+- Assigns severity ratings
+- Considers weather impacts
+- Provides detailed obstacle characteristics
 
-## FAQ
+### generate_path()
+Creates optimal path recommendations:
+- Generates waypoints
+- Calculates time estimates
+- Accounts for weather delays
+- Provides equipment recommendations
 
-### Assignment Questions
+### evaluate_crossing_difficulty()
+Assesses specific crossing challenges:
+- Difficulty rating calculation
+- Weather impact consideration
+- Crossing time estimation
+- Safety recommendations
 
-**Q: How do I choose a role for my agent?**
+### monitor_terrain_changes()
+Tracks changes in terrain conditions:
+- Weather-induced changes
+- Terrain condition updates
+- Risk assessment updates
 
-**A:** Review the list of SAR roles above and consider which aspects interest you most. Your agent should provide clear value to SAR operations through automation, decision support, or information processing.
+## Integration with Weather System
 
-**Q: What capabilities should my agent have?**
+The agent integrates with a WeatherAgent to provide:
+- Real-time weather condition monitoring
+- Weather impact assessment on terrain
+- Weather-based difficulty adjustments
+- Terrain-weather interaction analysis
 
-**A:** Your agent should handle tasks relevant to its role such as: data processing, decision making, communication with other agents, and providing actionable information to human operators.
+## Data Structures
 
-**Q: Can I add new dependencies?**
+### Terrain Analysis Output
+```python
+{
+    "location": str,
+    "terrain_types": list,
+    "elevation": {
+        "min": int,
+        "max": int
+    },
+    "slope": int,
+    "vegetation_density": float,
+    "soil_type": str,
+    "weather_conditions": dict,
+    "terrain_weather_interactions": list
+}
+```
 
-**A:** Yes, you can add new Python packages to requirements.txt as needed for your implementation.
+### Obstacle Data
+```python
+{
+    "type": str,
+    "severity": str,
+    "coordinates": list,
+    "details": dict
+}
+```
 
+### Path Data
+```python
+{
+    "start": str,
+    "end": str,
+    "difficulty": str,
+    "distance_km": float,
+    "estimated_time_hours": float,
+    "waypoints": list,
+    "terrain_challenges": list,
+    "recommended_equipment": list
+}
+```
 
-### Technical Questions
+## Limitations
 
-**Q: Why am I getting API key errors?**
-
-**A:** Ensure you've properly set up your .env file and obtained valid API keys from the services listed above.
-
-**Q: How do I test my agent?**
-
-**A:** Use the provided test framework in the tests/ directory. Write tests that verify your agent's core functionality.
-
-**Q: Can I use external libraries for my agent?**
-
-**A:** Yes, you can use external libraries as long as they are compatible.
+- Relies on simulated coordinate generation (replace with real geocoding in production)
+- Weather data integration requires active WeatherAgent
+- Terrain data is currently simulated (integrate with real GIS data in production)
+- Distance calculations use simplified Haversine formula
