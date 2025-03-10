@@ -25,6 +25,287 @@ class TerrainAnalystAgent(SARBaseAgent):
         self.weather_agent = weather_agent if weather_agent else WeatherAgent()
         self.knowledge_base = None
         
+        # Define obstacle templates for reuse
+        self._obstacle_templates = {
+            "generic_obstacle": {
+                "type": "generic_obstacle",
+                "severity": "medium",
+                "details": {
+                    "description": "General terrain challenge",
+                    "area_sq_meters": lambda: random.randint(50, 500)
+                }
+            },
+            "steep_slope": {
+                "type": "steep_slope",
+                "severity": "high",
+                "details": {
+                    "slope_degrees": lambda: random.randint(30, 60),
+                    "length_meters": lambda: random.randint(100, 500)
+                }
+            },
+            "water_crossing": {
+                "type": "water_crossing",
+                "severity": "medium",
+                "details": {
+                    "width_meters": lambda: random.randint(5, 30),
+                    "depth_meters": lambda: random.uniform(0.5, 3.0),
+                    "current_speed": lambda: random.uniform(1.0, 5.0)
+                }
+            },
+            "dense_vegetation": {
+                "type": "dense_vegetation",
+                "severity": "medium",
+                "details": {
+                    "area_sq_meters": lambda: random.randint(100, 5000),
+                    "visibility_meters": lambda: random.randint(1, 10),
+                    "vegetation_type": lambda: random.choice(["thick brush", "dense forest", "thorny bushes"])
+                }
+            },
+            "sandy_terrain": {
+                "type": "sandy_terrain",
+                "severity": "medium",
+                "details": {
+                    "area_sq_meters": lambda: random.randint(500, 10000),
+                    "sand_depth_cm": lambda: random.randint(10, 100)
+                }
+            },
+            "boggy_ground": {
+                "type": "boggy_ground",
+                "severity": "high",
+                "details": {
+                    "area_sq_meters": lambda: random.randint(50, 2000),
+                    "depth_meters": lambda: random.uniform(0.3, 2.0)
+                }
+            },
+            "flash_flood": {
+                "type": "flash_flood",
+                "severity": "extreme",
+                "details": {
+                    "depth_meters": lambda: random.uniform(0.5, 2.0),
+                    "current_speed": lambda: random.uniform(2.0, 8.0),
+                    "caused_by": "heavy rainfall"
+                }
+            },
+            "low_visibility_area": {
+                "type": "low_visibility_area",
+                "severity": "high",
+                "details": {
+                    "visibility_meters": lambda: random.randint(100, 3000),
+                    "caused_by": lambda: "fog" if random.random() > 0.5 else "haze"
+                }
+            },
+            "wind_hazard": {
+                "type": "wind_hazard",
+                "severity": "high",
+                "details": {
+                    "wind_speed_kph": lambda: random.randint(40, 80),
+                    "risk": lambda: "falling branches" if random.random() > 0.5 else "reduced stability"
+                }
+            }
+        }
+        
+        # Define templates for terrain-weather interactions
+        self._weather_interaction_templates = {
+            "landslide_risk": {
+                "condition": lambda terrain, weather: (
+                    "mountain" in terrain["terrain_types"] and 
+                    weather.get("precipitation", 0) > 10
+                ),
+                "interaction": {
+                    "type": "increased_landslide_risk",
+                    "description": "Rain increases the risk of landslides on steep slopes",
+                    "severity": lambda weather: "high" if weather.get("precipitation", 0) > 30 else "medium"
+                }
+            },
+            "rising_water": {
+                "condition": lambda terrain, weather: (
+                    "river" in terrain["terrain_types"] and 
+                    weather.get("precipitation", 0) > 10
+                ),
+                "interaction": {
+                    "type": "rising_water_levels",
+                    "description": "Rain may cause water levels to rise",
+                    "severity": lambda weather: "high" if weather.get("precipitation", 0) > 40 else "medium"
+                }
+            },
+            "slippery_ground": {
+                "condition": lambda terrain, weather: (
+                    terrain.get("soil_type") == "clay" and 
+                    weather.get("precipitation", 0) > 10
+                ),
+                "interaction": {
+                    "type": "slippery_ground",
+                    "description": "Rain on clay soil creates slippery conditions",
+                    "severity": lambda weather: "medium"
+                }
+            },
+            "falling_branches": {
+                "condition": lambda terrain, weather: (
+                    "forest" in terrain["terrain_types"] and 
+                    weather.get("wind_speed", 0) > 30
+                ),
+                "interaction": {
+                    "type": "falling_branches",
+                    "description": "High winds may cause branches or trees to fall",
+                    "severity": lambda weather: "high"
+                }
+            },
+            "dangerous_ridgelines": {
+                "condition": lambda terrain, weather: (
+                    terrain.get("elevation", {}).get("max", 0) > 1000 and 
+                    weather.get("wind_speed", 0) > 30
+                ),
+                "interaction": {
+                    "type": "dangerous_ridgelines",
+                    "description": "High winds on exposed ridgelines create hazardous conditions",
+                    "severity": lambda weather: "high"
+                }
+            },
+            "ice_formation": {
+                "condition": lambda terrain, weather: (
+                    "river" in terrain["terrain_types"] and 
+                    weather.get("temperature", 20) < 0
+                ),
+                "interaction": {
+                    "type": "ice_formation",
+                    "description": "Freezing temperatures create ice on water crossings",
+                    "severity": lambda weather: "medium"
+                }
+            },
+            "slippery_surfaces": {
+                "condition": lambda terrain, weather: (
+                    weather.get("temperature", 20) < 0
+                ),
+                "interaction": {
+                    "type": "slippery_surfaces",
+                    "description": "Freezing temperatures create icy surfaces",
+                    "severity": lambda terrain, weather: (
+                        "high" if terrain.get("slope", 0) > 20 else "medium"
+                    )
+                }
+            },
+            "extreme_heat": {
+                "condition": lambda terrain, weather: (
+                    "desert" in terrain["terrain_types"] and 
+                    weather.get("temperature", 20) > 35
+                ),
+                "interaction": {
+                    "type": "extreme_heat_danger",
+                    "description": "High temperatures increase risk of heat-related illness",
+                    "severity": lambda weather: "extreme"
+                }
+            },
+            "reduced_visibility": {
+                "condition": lambda terrain, weather: (
+                    weather.get("visibility", 10) < 5
+                ),
+                "interaction": {
+                    "type": "reduced_visibility",
+                    "description": "Poor visibility increases risk of navigation errors",
+                    "severity": lambda terrain: (
+                        "high" if terrain.get("slope", 0) > 30 else "medium"
+                    )
+                }
+            }
+        }
+        
+        # Define templates for terrain changes
+        self._terrain_change_templates = {
+            "increased_water_levels": {
+                "condition": lambda old_weather, new_weather: (
+                    new_weather.get("precipitation", 0) > old_weather.get("precipitation", 0) + 20
+                ),
+                "change": {
+                    "type": "increased_water_levels",
+                    "description": "Recent rainfall may have raised water levels",
+                    "affected_areas": ["river banks", "low-lying areas"],
+                    "severity": "medium"
+                }
+            },
+            "fallen_trees": {
+                "condition": lambda old_weather, new_weather, terrain: (
+                    new_weather.get("wind_speed", 0) > old_weather.get("wind_speed", 0) + 15 and
+                    "forest" in terrain["terrain_types"]
+                ),
+                "change": {
+                    "type": "fallen_trees",
+                    "description": "Increased winds may have caused tree falls",
+                    "affected_areas": ["forested areas", "trails"],
+                    "severity": "high"
+                }
+            },
+            "snow_melt": {
+                "condition": lambda old_weather, new_weather: (
+                    old_weather.get("temperature", 0) < 0 and
+                    new_weather.get("temperature", 0) > 5
+                ),
+                "change": {
+                    "type": "snow_melt",
+                    "description": "Rising temperatures are causing snow and ice melt",
+                    "affected_areas": ["slopes", "water crossings"],
+                    "severity": "medium"
+                }
+            },
+            "freezing_conditions": {
+                "condition": lambda old_weather, new_weather: (
+                    old_weather.get("temperature", 0) > 0 and
+                    new_weather.get("temperature", 0) < 0
+                ),
+                "change": {
+                    "type": "freezing_conditions",
+                    "description": "Dropping temperatures are causing icy conditions",
+                    "affected_areas": ["paths", "slopes", "water crossings"],
+                    "severity": "high"
+                }
+            }
+        }
+        
+        # Define equipment recommendations by terrain challenge type
+        self._equipment_by_challenge = {
+            "steep_slope": ["climbing rope", "harnesses", "carabiners", "helmets"],
+            "water_crossing": ["water-resistant boots", "trekking poles", "life vests"],
+            "dense_vegetation": ["machetes", "heavy gloves", "protective clothing"],
+            "sandy_terrain": ["gaiters", "wide-base footwear"],
+            "boggy_ground": ["trekking poles", "mud boots", "extraction equipment"],
+            "flash_flood": ["water-resistant gear", "emergency flotation devices"],
+            "low_visibility_area": ["high-powered flashlights", "reflective markers"],
+            "wind_hazard": ["wind-resistant clothing", "face protection"]
+        }
+        
+        # Define crossing recommendations by obstacle type and difficulty
+        self._crossing_recommendations = {
+            "water_crossing": {
+                "easy": "Safe to cross at marked points",
+                "moderate": "Use walking stick for stability; consider water shoes",
+                "difficult": "Use rope assist system; avoid crossing if alone",
+                "extreme": "Do not attempt crossing; find alternate route"
+            },
+            "steep_slope": {
+                "easy": "Use proper footwear with good traction",
+                "moderate": "Use hiking poles; take breaks on ascent",
+                "difficult": "Use climbing equipment; set safety lines",  
+                "extreme": "Technical climbing skills required; consider alternate route"
+            },
+            "dense_vegetation": {
+                "easy": "Follow established trails",
+                "moderate": "Use protective clothing; bring machete for clearing",
+                "difficult": "Seek animal trails; progress will be slow",
+                "extreme": "Consider aerial extraction if available"
+            },
+            "flash_flood": {
+                "easy": "Cross at shallow points; monitor upstream",
+                "moderate": "Delay crossing if water rising; use walking stick",
+                "difficult": "Find alternate route or wait for water to recede",
+                "extreme": "Do not attempt crossing; seek higher ground"
+            },
+            "boggy_ground": {
+                "easy": "Stay on marked trails",
+                "moderate": "Test ground firmness before steps; use hiking poles",
+                "difficult": "Use snowshoe-like platforms to distribute weight",
+                "extreme": "Avoid area completely; significant risk of sinking"
+            }
+        }
+        
     def set_knowledge_base(self, knowledge_base):
         """Set a knowledge base for persistent storage"""
         self.knowledge_base = knowledge_base
@@ -117,110 +398,45 @@ class TerrainAnalystAgent(SARBaseAgent):
         
         obstacles = []
 
-        obstacles.append({
-            "type": "generic_obstacle",
-            "severity": "medium",
-            "coordinates": self._generate_random_coordinates(location),
-            "details": {
-                "description": "General terrain challenge",
-                "area_sq_meters": random.randint(50, 500)
-            }
-        })
+        # Add the generic obstacle
+        obstacles.append(self._create_obstacle("generic_obstacle", location))
         
         # Terrain-based obstacles
         if "mountain" in analysis["terrain_types"]:
-            obstacles.append({
-                "type": "steep_slope",
-                "severity": "high",
-                "coordinates": self._generate_random_coordinates(location),
-                "details": {
-                    "slope_degrees": random.randint(30, 60),
-                    "length_meters": random.randint(100, 500)
-                }
-            })
+            obstacles.append(self._create_obstacle("steep_slope", location))
             
         if "river" in analysis["terrain_types"] or "obstacle_type" in location:
-            obstacles.append({
-                "type": "water_crossing",
-                "severity": "medium",
-                "coordinates": self._generate_random_coordinates(location),
-                "details": {
-                    "width_meters": random.randint(5, 30),
-                    "depth_meters": random.uniform(0.5, 3.0),
-                    "current_speed": random.uniform(1.0, 5.0)
-                }
-            })
+            obstacles.append(self._create_obstacle("water_crossing", location))
             
         if analysis["vegetation_density"] > 0.7:
-            obstacles.append({
-                "type": "dense_vegetation",
-                "severity": "medium",
-                "coordinates": self._generate_random_coordinates(location),
-                "details": {
-                    "area_sq_meters": random.randint(100, 5000),
-                    "visibility_meters": random.randint(1, 10),
-                    "vegetation_type": random.choice(["thick brush", "dense forest", "thorny bushes"])
-                }
-            })
+            obstacles.append(self._create_obstacle("dense_vegetation", location))
             
         if "desert" in analysis["terrain_types"]:
-            obstacles.append({
-                "type": "sandy_terrain",
-                "severity": "medium",
-                "coordinates": self._generate_random_coordinates(location),
-                "details": {
-                    "area_sq_meters": random.randint(500, 10000),
-                    "sand_depth_cm": random.randint(10, 100)
-                }
-            })
+            obstacles.append(self._create_obstacle("sandy_terrain", location))
         
         if "swamp" in analysis["terrain_types"]:
-            obstacles.append({
-                "type": "boggy_ground",
-                "severity": "high",
-                "coordinates": self._generate_random_coordinates(location),
-                "details": {
-                    "area_sq_meters": random.randint(50, 2000),
-                    "depth_meters": random.uniform(0.3, 2.0)
-                }
-            })
+            obstacles.append(self._create_obstacle("boggy_ground", location))
         
+        # Weather-based obstacles
         if include_weather and "weather_conditions" in analysis:
             weather = analysis["weather_conditions"]
             
             if weather.get("precipitation", 0) > 30:  # Significant rain
-                obstacles.append({
-                    "type": "flash_flood",
-                    "severity": "extreme",
-                    "coordinates": self._generate_random_coordinates(location),
-                    "details": {
-                        "depth_meters": random.uniform(0.5, 2.0),
-                        "current_speed": random.uniform(2.0, 8.0),
-                        "caused_by": "heavy rainfall"
-                    }
-                })
+                obstacles.append(self._create_obstacle("flash_flood", location))
             
             if weather.get("visibility", 10) < 3:  # Low visibility
-                obstacles.append({
-                    "type": "low_visibility_area",
-                    "severity": "high",
-                    "coordinates": self._generate_random_coordinates(location),
-                    "details": {
-                        "visibility_meters": weather.get("visibility", 0) * 1000,
-                        "caused_by": "fog" if weather.get("temperature", 20) < 15 else "haze"
-                    }
-                })
+                # Create a low visibility obstacle with a specialized detail
+                obstacle = self._create_obstacle("low_visibility_area", location)
+                obstacle["details"]["visibility_meters"] = weather.get("visibility", 0) * 1000
+                obstacle["details"]["caused_by"] = "fog" if weather.get("temperature", 20) < 15 else "haze"
+                obstacles.append(obstacle)
                 
             if weather.get("wind_speed", 0) > 40:  # High winds
-                obstacles.append({
-                    "type": "wind_hazard",
-                    "severity": "high",
-                    "coordinates": self._generate_random_coordinates(location),
-                    "details": {
-                        "wind_speed_kph": weather.get("wind_speed", 0),
-                        "risk": "falling branches" if "forest" in analysis["terrain_types"] else "reduced stability"
-                    }
-                })
+                # Create a wind hazard with specialized details based on terrain
+                obstacle = self._create_obstacle("wind_hazard", location)
+                obstacle["details"]["wind_speed_kph"] = weather.get("wind_speed", 0)
+                obstacle["details"]["risk"] = "falling branches" if "forest" in analysis["terrain_types"] else "reduced stability"
+                obstacles.append(obstacle)
         
         self.obstacle_database[location] = obstacles
         
@@ -231,6 +447,28 @@ class TerrainAnalystAgent(SARBaseAgent):
             "weather_factored": include_weather,
             "analysis_timestamp": self._get_timestamp()
         }
+    
+    def _create_obstacle(self, obstacle_type, location):
+        """Helper method to create an obstacle of a specific type"""
+        if obstacle_type not in self._obstacle_templates:
+            raise ValueError(f"Unknown obstacle type: {obstacle_type}")
+            
+        template = self._obstacle_templates[obstacle_type]
+        obstacle = {
+            "type": template["type"],
+            "severity": template["severity"],
+            "coordinates": self._generate_random_coordinates(location),
+            "details": {}
+        }
+        
+        # Generate dynamic values for details
+        for key, value_generator in template["details"].items():
+            if callable(value_generator):
+                obstacle["details"][key] = value_generator()
+            else:
+                obstacle["details"][key] = value_generator
+                
+        return obstacle
     
     def generate_path(self, start, end, difficulty="normal", include_weather=True):
         """Generate path recommendation between two points with weather considerations"""
@@ -336,43 +574,20 @@ class TerrainAnalystAgent(SARBaseAgent):
         if "weather_conditions" in last_analysis:
             old_weather = last_analysis["weather_conditions"]
             
-            # Check for rainfall increase (potential flooding)
-            if current_weather.get("precipitation", 0) > old_weather.get("precipitation", 0) + 20:
-                terrain_changes.append({
-                    "type": "increased_water_levels",
-                    "description": "Recent rainfall may have raised water levels",
-                    "affected_areas": ["river banks", "low-lying areas"],
-                    "severity": "medium"
-                })
+            # Check for possible terrain changes using template system
+            for change_key, change_template in self._terrain_change_templates.items():
+                # Check if this change's condition is met
+                condition_func = change_template["condition"]
                 
-            # Check for wind increase (potential fallen trees/debris)
-            if current_weather.get("wind_speed", 0) > old_weather.get("wind_speed", 0) + 15:
-                if "forest" in last_analysis["terrain_types"]:
-                    terrain_changes.append({
-                        "type": "fallen_trees",
-                        "description": "Increased winds may have caused tree falls",
-                        "affected_areas": ["forested areas", "trails"],
-                        "severity": "high"
-                    })
-                
-            # Check for temperature changes (snow melt or freezing)
-            if (old_weather.get("temperature", 0) < 0 and
-                current_weather.get("temperature", 0) > 5):
-                terrain_changes.append({
-                    "type": "snow_melt",
-                    "description": "Rising temperatures are causing snow and ice melt",
-                    "affected_areas": ["slopes", "water crossings"],
-                    "severity": "medium" 
-                })
-                
-            elif (old_weather.get("temperature", 0) > 0 and
-                  current_weather.get("temperature", 0) < 0):
-                terrain_changes.append({
-                    "type": "freezing_conditions",
-                    "description": "Dropping temperatures are causing icy conditions",
-                    "affected_areas": ["paths", "slopes", "water crossings"],
-                    "severity": "high"
-                })
+                # Handle different condition signatures
+                if "fallen_trees" in change_key:
+                    # This condition needs terrain data too
+                    if condition_func(old_weather, current_weather, last_analysis):
+                        terrain_changes.append(change_template["change"])
+                else:
+                    # Standard condition with just weather data
+                    if condition_func(old_weather, current_weather):
+                        terrain_changes.append(change_template["change"])
                 
         return {
             "location": location,
@@ -482,40 +697,7 @@ class TerrainAnalystAgent(SARBaseAgent):
     
     def _get_crossing_recommendation(self, obstacle_type, difficulty):
         """Get recommendations for crossing a specific obstacle type"""
-        recommendations = {
-            "water_crossing": {
-                "easy": "Safe to cross at marked points",
-                "moderate": "Use walking stick for stability; consider water shoes",
-                "difficult": "Use rope assist system; avoid crossing if alone",
-                "extreme": "Do not attempt crossing; find alternate route"
-            },
-            "steep_slope": {
-                "easy": "Use proper footwear with good traction",
-                "moderate": "Use hiking poles; take breaks on ascent",
-                "difficult": "Use climbing equipment; set safety lines",  
-                "extreme": "Technical climbing skills required; consider alternate route"
-            },
-            "dense_vegetation": {
-                "easy": "Follow established trails",
-                "moderate": "Use protective clothing; bring machete for clearing",
-                "difficult": "Seek animal trails; progress will be slow",
-                "extreme": "Consider aerial extraction if available"
-            },
-            "flash_flood": {
-                "easy": "Cross at shallow points; monitor upstream",
-                "moderate": "Delay crossing if water rising; use walking stick",
-                "difficult": "Find alternate route or wait for water to recede",
-                "extreme": "Do not attempt crossing; seek higher ground"
-            },
-            "boggy_ground": {
-                "easy": "Stay on marked trails",
-                "moderate": "Test ground firmness before steps; use hiking poles",
-                "difficult": "Use snowshoe-like platforms to distribute weight",
-                "extreme": "Avoid area completely; significant risk of sinking"
-            }
-        }
-        
-        return recommendations.get(obstacle_type, {}).get(
+        return self._crossing_recommendations.get(obstacle_type, {}).get(
             difficulty,
             f"Exercise caution appropriate to {difficulty} rating"
         )
@@ -566,72 +748,27 @@ class TerrainAnalystAgent(SARBaseAgent):
         """Analyze how weather affects terrain conditions"""
         interactions = []
         
-        if weather_data.get("precipitation", 0) > 10:
-            if "mountain" in terrain_analysis["terrain_types"]:
-                interactions.append({
-                    "type": "increased_landslide_risk",
-                    "description": "Rain increases the risk of landslides on steep slopes",
-                    "severity": "high" if weather_data.get("precipitation", 0) > 30 else "medium"
-                })
-                
-            if "river" in terrain_analysis["terrain_types"]:
-                interactions.append({
-                    "type": "rising_water_levels",
-                    "description": "Rain may cause water levels to rise",
-                    "severity": "high" if weather_data.get("precipitation", 0) > 40 else "medium"
-                })
-                
-            if terrain_analysis.get("soil_type") == "clay":
-                interactions.append({
-                    "type": "slippery_ground",
-                    "description": "Rain on clay soil creates slippery conditions",
-                    "severity": "medium"
-                })
-                
-        if weather_data.get("wind_speed", 0) > 30:
-            if "forest" in terrain_analysis["terrain_types"]:
-                interactions.append({
-                    "type": "falling_branches",
-                    "description": "High winds may cause branches or trees to fall",
-                    "severity": "high"
-                })
-                
-            if terrain_analysis.get("elevation", {}).get("max", 0) > 1000:
-                interactions.append({
-                    "type": "dangerous_ridgelines",
-                    "description": "High winds on exposed ridgelines create hazardous conditions",
-                    "severity": "high"
-                })
-                
-        if weather_data.get("temperature", 20) < 0:
-            if "river" in terrain_analysis["terrain_types"]:
-                interactions.append({
-                    "type": "ice_formation",
-                    "description": "Freezing temperatures create ice on water crossings",
-                    "severity": "medium"
-                })
-                
-            interactions.append({
-                "type": "slippery_surfaces",
-                "description": "Freezing temperatures create icy surfaces",
-                "severity": "high" if terrain_analysis.get("slope", 0) > 20 else "medium"
-            })
+        # Use the template system to identify all potential interactions
+        for interaction_key, template in self._weather_interaction_templates.items():
+            # Check if this interaction's condition is met
+            condition_func = template["condition"]
             
-        elif weather_data.get("temperature", 20) > 35:
-            if "desert" in terrain_analysis["terrain_types"]:
-                interactions.append({
-                    "type": "extreme_heat_danger",
-                    "description": "High temperatures increase risk of heat-related illness",
-                    "severity": "extreme"
-                })
+            if condition_func(terrain_analysis, weather_data):
+                # Create the interaction object
+                interaction = dict(template["interaction"])  # Create a copy
                 
-        if weather_data.get("visibility", 10) < 5:
-            interactions.append({
-                "type": "reduced_visibility",
-                "description": "Poor visibility increases risk of navigation errors",
-                "severity": "high" if terrain_analysis.get("slope", 0) > 30 else "medium"
-            })
-            
+                # Handle dynamic severity calculation if it's a function
+                if callable(interaction["severity"]):
+                    # Check if the severity function needs just weather or both terrain and weather
+                    param_count = interaction["severity"].__code__.co_argcount
+                    
+                    if param_count == 1:
+                        interaction["severity"] = interaction["severity"](weather_data)
+                    else:
+                        interaction["severity"] = interaction["severity"](terrain_analysis, weather_data)
+                
+                interactions.append(interaction)
+                
         return interactions
     
     def _generate_geojson(self, location, analysis, obstacles, include_weather=True):
@@ -785,29 +922,12 @@ class TerrainAnalystAgent(SARBaseAgent):
         equipment = ["standard SAR kit", "communications equipment", "first aid supplies"]
         
         for challenge in terrain_challenges:
-            if challenge["type"] == "steep_slope":
-                equipment.extend(["climbing rope", "harnesses", "carabiners", "helmets"])
-            elif challenge["type"] == "water_crossing":
-                equipment.extend(["water-resistant boots", "trekking poles", "life vests"])
-            elif challenge["type"] == "dense_vegetation":
-                equipment.extend(["machetes", "heavy gloves", "protective clothing"])
-            elif challenge["type"] == "sandy_terrain":
-                equipment.extend(["gaiters", "wide-base footwear"])
-            elif challenge["type"] == "boggy_ground":
-                equipment.extend(["trekking poles", "mud boots", "extraction equipment"])
-            elif challenge["type"] == "flash_flood":
-                equipment.extend(["water-resistant gear", "emergency flotation devices"])
-            elif challenge["type"] == "low_visibility_area":
-                equipment.extend(["high-powered flashlights", "reflective markers"])
-            elif challenge["type"] == "wind_hazard":
-                equipment.extend(["wind-resistant clothing", "face protection"])
+            challenge_type = challenge["type"]
+            if challenge_type in self._equipment_by_challenge:
+                equipment.extend(self._equipment_by_challenge[challenge_type])
         
-        unique_equipment = []
-        for item in equipment:
-            if item not in unique_equipment:
-                unique_equipment.append(item)
-        
-        return unique_equipment
+        # Deduplicate equipment list
+        return list(set(equipment))
 
     def _generate_waypoints(self, start, end, num_waypoints):
         """Generate waypoints between start and end locations"""
@@ -855,7 +975,7 @@ class TerrainAnalystAgent(SARBaseAgent):
                 waypoints[waypoint_id - 1]["coordinates"]
             )
         
-        hours = distance / 3.0 # Assuming average speed of 3 km/h, idk if this is too much
+        hours = distance / 3.0 # Assuming average speed of 3 km/h
         minutes = hours * 60
         
         return round(minutes, 1)
