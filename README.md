@@ -22,7 +22,7 @@ The `TerrainAnalystAgent` has been refactored based on peer feedback to improve 
 ## Overview
 The Terrain Analyst Agent is a component of the Search and Rescue (SAR) operations system, designed to analyze terrain conditions, identify obstacles, and generate path recommendations for SAR missions. This agent integrates terrain analysis with real-time weather data to provide comprehensive environmental assessments for SAR operations.
 
-NOTE: I have added a terrain_agent_demo.py script for an easy test of this agent
+NOTE: I have added a terrain_agent_demo.py script for an easy test of this agent. Run to see typical output of this agent
 
 ## Key Features
 
